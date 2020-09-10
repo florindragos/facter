@@ -40,9 +40,12 @@ module Facter
       end
     end
 
-    def group_cached?(group_name)
-      cached = @fact_groups.get_group_ttls(group_name) ? true : false
-      delete_cache(group_name) unless cached
+    def fact_cache_enabled?(fact_name)
+      return false unless @fact_groups.get_fact(fact_name)
+
+      fact = @fact_groups.get_fact(fact_name)
+      cached = fact[:ttls] ? true : false
+      delete_cache(fact[:group]) unless cached
       cached
     end
 
@@ -57,9 +60,9 @@ module Facter
 
       return unless group_name
 
-      return unless group_cached?(group_name)
+      return unless fact_cache_enabled?(searched_fact.name)
 
-      return unless check_ttls?(group_name)
+      return unless check_ttls?(searched_fact.name)
 
       data = read_group_json(group_name)
       return unless data
@@ -89,11 +92,11 @@ module Facter
       group_name = if fact.file
                      File.basename(fact.file)
                    else
-                     @fact_groups.get_fact_group(fact.name)
+                    @fact_groups.get_fact_group(fact.name)
                    end
       return if !group_name || fact.value.nil?
 
-      return unless group_cached?(group_name)
+      return unless fact_cache_enabled?(fact.name)
 
       @groups[group_name] ||= {}
       @groups[group_name][fact.name] = fact.value
@@ -106,10 +109,10 @@ module Facter
       end
 
       @groups.each do |group_name, data|
-        next unless check_ttls?(group_name)
+        cache_file_name = File.join(@cache_dir, group_name)
+        next if File.readable?(cache_file_name)
 
         @log.debug("caching values for #{group_name} facts")
-        cache_file_name = File.join(@cache_dir, group_name)
         File.write(cache_file_name, JSON.pretty_generate(data))
       end
     end
@@ -128,8 +131,15 @@ module Facter
       @groups[group_name] = data
     end
 
-    def check_ttls?(group_name)
-      ttls = @fact_groups.get_group_ttls(group_name)
+    def check_group_ttls(group_name)
+    end
+
+    def check_ttls?(fact_name)
+      fact = @fact_groups.get_fact(fact_name)
+      return unless fact
+
+      ttls = fact[:ttls]
+      group_name = fact[:group]
       return false unless ttls
 
       cache_file_name = File.join(@cache_dir, group_name)
@@ -144,7 +154,7 @@ module Facter
       @log.debug("#{group_name} facts cache file expired/missing")
       true
     end
-
+  
     def delete_cache(group_name)
       cache_file_name = File.join(@cache_dir, group_name)
       File.delete(cache_file_name) if File.readable?(cache_file_name)

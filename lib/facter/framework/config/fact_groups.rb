@@ -2,7 +2,7 @@
 
 module Facter
   class FactGroups
-    attr_reader :groups, :block_list
+    attr_reader :groups, :block_list, :facts_ttls
 
     @groups_ttls = []
 
@@ -14,6 +14,7 @@ module Facter
       @groups ||= File.readable?(@groups_file_path) ? Hocon.load(@groups_file_path) : {}
       load_groups
       load_groups_from_options
+      load_facts_ttls
     end
 
     # Breakes down blocked groups in blocked facts
@@ -31,7 +32,12 @@ module Facter
 
     # Get the group name a fact is part of
     def get_fact_group(fact_name)
-      @groups.detect { |k, v| break k if Array(v).find { |f| fact_name =~ /^#{f}.*/ } }
+       fact = get_fact(fact_name)
+       return fact[:group] if fact
+      #  @facts_ttls[fact_name][:group] if @facts_ttls[fact_name]
+      #  unless group
+      #   @facts_ttls.select { |k, v| break v[:group] if fact_name =~ /^#{k}\..*/ }
+      #  end
     end
 
     # Get config ttls for a given group
@@ -39,6 +45,15 @@ module Facter
       return unless (ttls = @groups_ttls.find { |g| g[group_name] })
 
       ttls_to_seconds(ttls[group_name])
+    end
+
+    def get_fact(fact_name)
+      return @facts_ttls[fact_name] if @facts_ttls[fact_name]
+
+      fact = @facts_ttls.select { |k, v| break v if fact_name =~ /^#{k}\..*/ }
+      return nil if fact == {}
+
+      fact
     end
 
     private
@@ -51,6 +66,24 @@ module Facter
         ext_facts.reject! { |ef| ef =~ /^(\.|\.\.)$/ }
         ext_facts.each do |ef|
           @groups[ef] = nil
+        end
+      end
+    end
+
+    def load_facts_ttls
+      @facts_ttls ||= {}
+      @groups.each do |group, facts|
+        ttls = get_group_ttls(group)
+        next unless ttls
+
+        # require 'pry-byebug'
+        # binding.pry
+        facts.each do |fact|
+          if @facts_ttls[fact]
+            @facts_ttls[fact] = {:ttls => ttls, :group => group} if @facts_ttls[fact][:ttls] < ttls
+          else
+            @facts_ttls[fact] = {:ttls => ttls, :group => group}
+          end
         end
       end
     end

@@ -14,3 +14,5 @@ eval_gemfile(local_gemfile) if File.exist?(local_gemfile)
 group(:documentation) do
   gem 'ronn', '~> 0.7.3', require: false, platforms: [:ruby]
 end
+
+gem 'pry-byebug'
